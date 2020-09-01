@@ -13,7 +13,6 @@ Public WithEvents FW As xlsFileWatcher
 Attribute FW.VB_VarHelpID = -1
 Private bRunning As Boolean
 
-
 Friend Sub WatchReset()
     If Not bRunning Then
         Call DestroyAll
@@ -31,7 +30,7 @@ Public Sub StartWatching()
         
         'Start watching files
         Set FW = xlsFileWatcher
-        Call FW.fwStartWatching
+        Call FW.fwStartWatching(ThisWorkbook.Path & GetSetting("Root"))
         
         'initialise workbook events
         Set wb = ThisWorkbook
@@ -49,11 +48,10 @@ End Sub
 Public Sub RunTests()
     'Get test sub name
     Dim sTestSubName As String
-    sTestSubName = getIniValue(ThisWorkbook & "\..\config.ini", "TestMain")
+    sTestSubName = GetSetting("TestMain")
     
     'Run test sub
-    On Error Resume Next
-    Application.Run sTestSubName
+    If sTestSubName <> "" Then Call Application.Run(sTestSubName)
 End Sub
 
 Public Sub DestroyAll()
@@ -103,8 +101,8 @@ End Sub
 Private Sub FW_FileChanged(ByVal sFileName As String)
     'Update physical table date
     If isVBFile(sFileName) Then
-        'We have the file, so we can attempt to remove it
-        Call RemoveVBComponent(getVBAttributeName(sFileName))
+        'Try to remove VB Component
+        Call RemoveVBComponent(getVBProjectNameFromPath(sFileName))
         
         'Now reimport the file
         Call ImportVBComponent(sFileName)
@@ -142,28 +140,11 @@ End Sub
 Private Sub FW_FileRemoved(ByVal sFileName As String)
     'Remove row from physical table
     If isVBFile(sFileName) Then
-        Dim data As Variant
-        data = getProjectData()
-        
-        'Find Class/Module/Form name
-        Dim iFileIndex As Long: iFileIndex = getProjectHeaderIndex("File")
-        Dim i As Long
-        For i = 1 To UBound(data, 1)
-            'If item path is the path which was removed then, find name and remove component
-            If data(i, iFileIndex) = sFileName Then
-                'Get item name
-                Dim sItemName As String
-                sItemName = data(i, getProjectHeaderIndex("Name"))
+        'Try to remove VB Component
+        Call RemoveVBComponent(getVBProjectNameFromPath(sFileName))
                 
-                'Try to remove VB Component
-                Call RemoveVBComponent(sItemName)
-                
-                'Delete row from list object
-                Me.ListObjects("VBProject").ListRows.Item(i).Delete
-                
-                Exit For
-            End If
-        Next
+        'Delete row from list object
+        Me.ListObjects("VBProject").ListRows.Item(getVBProjectRowFromPath(sFileName)).Delete
         
         'Run tests
         Call RunTests
@@ -173,9 +154,39 @@ Private Sub FW_FileRenamed(ByVal sOldFilePath As String, ByVal sNewFilePath As S
     'Not currently identified, instead we get around this by ensuring Remove() is called prior to Create()
 End Sub
 
+'Helper functions
+Private Function getVBProjectRowFromPath(ByVal sFileName As String)
+    Dim data As Variant
+    data = getProjectData()
+    'Find Class/Module/Form row
+    Dim iFileIndex As Long: iFileIndex = getProjectHeaderIndex("File")
+    Dim i As Long
+    For i = 1 To UBound(data, 1)
+        'If item path is the path which was removed then, find name and remove component
+        If data(i, iFileIndex) = sFileName Then
+            getVBProjectRowFromPath = i
+            Exit Function
+        End If
+    Next
+End Function
 
-
-
+Private Function getVBProjectNameFromPath(ByVal sFileName As String) As String
+    Dim data As Variant
+    data = getProjectData()
+    
+    'Find Class/Module/Form name
+    Dim iFileIndex As Long: iFileIndex = getProjectHeaderIndex("File")
+    Dim i As Long
+    For i = 1 To UBound(data, 1)
+        'If item path is the path which was removed then, find name and remove component
+        If data(i, iFileIndex) = sFileName Then
+            'Get item name
+            Dim sItemName As String
+            getVBProjectNameFromPath = data(i, getProjectHeaderIndex("Name"))
+            Exit Function
+        End If
+    Next
+End Function
 
 Private Function getProjectData() As Variant
     getProjectData = Me.ListObjects("VBProject").DataBodyRange.Value
@@ -190,20 +201,15 @@ End Function
 
 
 
-Private Function getIniValue(ByVal sIniFile As String, ByVal sIniKey As String) As String
-    Dim ff As Long
-    ff = FreeFile
-    
-    Dim textRow As String
-    Open sIniFile For Input As #ff
-    Do While Not EOF(ff)
-        Line Input #ff, textRow
-        If textRow Like sIniKey & "=*" Then
-            getIniValue = Mid(sIniKey, Len(sIniKey) + 2)
+Private Function GetSetting(ByVal sKey As String) As String
+    Dim vData As Variant: vData = Me.ListObjects("Settings").DataBodyRange.Value
+    Dim i As Long
+    For i = 1 To UBound(vData, 1)
+        If sKey = vData(i, 1) Then
+            GetSetting = vData(i, 2)
             Exit Function
         End If
-    Loop
-    Close #ff
+    Next
 End Function
 
 
