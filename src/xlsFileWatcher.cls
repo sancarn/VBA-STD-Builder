@@ -23,6 +23,12 @@ Public cRoots As Collection  'allow for multiple roots
 Public oInitialisedRoots As Object
 Public bTrackDeletes As Boolean
 
+Public cScheduledInit As Collection
+Public cScheduledCreated As Collection
+Public cScheduledRemoved As Collection
+Public cScheduledChanged As Collection
+
+
 Public Sub fwStartWatching(Optional ByVal root As String = "", Optional ByVal TrackDeletes As Boolean = True)
     'Initialise file manager and initialisation dictionary
     Set oFileManager = CreateObject("Scripting.Dictionary")
@@ -53,6 +59,12 @@ Friend Sub Watch()
     'cRoots shouldn't ever be nothing unless a scheduled call was made when VBA has stopped, so just exit if it occurs
     'It's interesting this is called, in theory this means we can create a VBA reset detector
     If cRoots Is Nothing Then Exit Sub
+    
+    'Set scheduled events to new collections
+    Set cScheduledInit = New Collection
+    Set cScheduledCreated = New Collection
+    Set cScheduledRemoved = New Collection
+    Set cScheduledChanged = New Collection
     
     'If we are tracking deletes set all files exists status to false
     If bTrackDeletes Then
@@ -92,14 +104,44 @@ Friend Sub Watch()
             
             'If exists is false, then file removed
             If Not oFileManager(sDeletedKey)("Exists") Then
-                RaiseEvent FileRemoved(sDeletedKey)
+                cScheduledRemoved.Add sDeletedKey
                 Call oFileManager.Remove(sDeletedKey)
             End If
         Next
     End If
     
+    ''Potential for determining file move events here
+    'set cScheduledRenamed = DetectFileRenames(cScheduledCreated, cScheduledRemoved)
+    
+    'Dispatch all events in order: Init, Change, Remove, Create
+    Call DispatchEvents
+    
     'Loop watch
     Application.OnTime Now() + TimeValue("00:00:01"), "xlsFileWatcher.Watch", Schedule:=True
+End Sub
+
+Private Sub DispatchEvents()
+    Dim vFile As Variant
+    
+    'Raise file initialise events
+    For Each vFile In cScheduledInit
+        RaiseEvent FileInit(vFile)
+    Next
+    
+    'Raise file change events
+    For Each vFile In cScheduledChanged
+        RaiseEvent FileChanged(vFile)
+    Next
+    
+    'Raise file deletion events
+    For Each vFile In cScheduledRemoved
+        RaiseEvent FileRemoved(vFile)
+    Next
+    
+    'Raise file creation events
+    For Each vFile In cScheduledCreated
+        RaiseEvent FileCreated(vFile)
+    Next
 End Sub
 
 'Watches the root specified
@@ -141,14 +183,14 @@ Private Sub HandleFile(ByVal bRootInitialised As Boolean, ByVal sFile As String)
     
     'If root is initialising, initialise file
     If Not bRootInitialised Then
-        RaiseEvent FileInit(sFile)
+        cScheduledInit.Add sFile
         Set oFileManager(sFile) = CreateFileObject(sFile, DateModified, True)
     Else
         'If file already exists, then not created
         If oFileManager.Exists(sFile) Then
             'If date modified now later than cached then
             If DateModified > oFileManager(sFile)("DateModified") Then
-                RaiseEvent FileChanged(sFile)
+                cScheduledChanged.Add sFile
                 oFileManager(sFile)("DateModified") = DateModified
                 oFileManager(sFile)("Exists") = True
             Else
@@ -156,7 +198,7 @@ Private Sub HandleFile(ByVal bRootInitialised As Boolean, ByVal sFile As String)
             End If
         Else
             'New file created
-            RaiseEvent FileCreated(sFile)
+            cScheduledCreated.Add sFile
             Set oFileManager(sFile) = CreateFileObject(sFile, DateModified, True)
         End If
     End If
