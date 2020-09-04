@@ -29,7 +29,7 @@ Public cScheduledRemoved As Collection
 Public cScheduledChanged As Collection
 
 
-Public Sub fwStartWatching(Optional ByVal root As String = "", Optional ByVal TrackDeletes As Boolean = True)
+Public Sub fwStartWatching(Optional ByVal root As String = "", Optional ByVal Recurse As Boolean = True, Optional ByVal TrackDeletes As Boolean = True)
     'Initialise file manager and initialisation dictionary
     Set oFileManager = CreateObject("Scripting.Dictionary")
     Set oInitialisedRoots = CreateObject("Scripting.Dictionary")
@@ -37,20 +37,20 @@ Public Sub fwStartWatching(Optional ByVal root As String = "", Optional ByVal Tr
     
     'Add root and initialise root as false
     Dim sRoot As String: sRoot = IIf(root = "", ThisWorkbook.Path, root)
-    cRoots.Add sRoot
+    cRoots.Add CreateRoot(sRoot, Recurse)
     oInitialisedRoots(sRoot) = False
     bTrackDeletes = TrackDeletes
     
     'Schedule watch
-    Application.OnTime Now() + TimeValue("00:00:01"), "xlsFileWatcher.Watch", Schedule:=True
+    Application.OnTime Now() + TimeValue("00:00:01"), "xlsFileWatcher.Watch", , True
 End Sub
 Public Sub fwStopWatching()
     'Deschedule watch
-    Application.OnTime Now() + TimeValue("00:00:01"), "xlsFileWatcher.Watch", Schedule:=False
+    Application.OnTime Now() + TimeValue("00:00:01"), "xlsFileWatcher.Watch", , False
 End Sub
-Public Sub fwAddRoot(ByVal sRoot As String)
+Public Sub fwAddRoot(ByVal sRoot As String, ByVal Recurse As Boolean)
     'Schedule watch of new root
-    cRoots.Add sRoot
+    cRoots.Add CreateRoot(sRoot, Recurse)
     oInitialisedRoots(sRoot) = False
 End Sub
 
@@ -78,13 +78,14 @@ Friend Sub Watch()
     End If
     
     'Loop through roots and handle folders/files
-    Dim vRoot As Variant
+    Dim vRoot As Object
     For Each vRoot In cRoots
-        Dim sRoot As String: sRoot = vRoot
+        Dim sRoot As String: sRoot = vRoot("Path")
+        Dim bRecurse As Boolean: bRecurse = vRoot("Recurse")
         Dim bRootInitialised As Boolean: bRootInitialised = oInitialisedRoots(sRoot)
         
         If VBA.FileSystem.GetAttr(sRoot) = vbDirectory Then
-            Call HandleFolder(bRootInitialised, sRoot)
+            Call HandleFolder(bRootInitialised, sRoot, bRecurse)
         Else
             Call HandleFile(bRootInitialised, sRoot)
         End If
@@ -145,7 +146,7 @@ Private Sub DispatchEvents()
 End Sub
 
 'Watches the root specified
-Private Sub HandleFolder(ByVal bRootInitialised As Boolean, ByVal sFolder As String)
+Private Sub HandleFolder(ByVal bRootInitialised As Boolean, ByVal sFolder As String, ByVal bRecurse As Boolean)
     'Ensure folder has a "\" on the back
     sFolder = sFolder & IIf(Right(sFolder, 1) <> "\", "\", "")
     
@@ -160,7 +161,8 @@ Private Sub HandleFolder(ByVal bRootInitialised As Boolean, ByVal sFolder As Str
         If sItem <> "." And sItem <> ".." Then
             'Schedule for handling of directories, and handle files
             If GetAttr(sFolder & sItem) = vbDirectory Then
-                cFolders.Add sFolder & sItem
+                'Only recurse if recurse flag is set
+                If bRecurse Then Call cFolders.Add(sFolder & sItem)
             Else
                 Call HandleFile(bRootInitialised, sFolder & sItem)
             End If
@@ -174,7 +176,7 @@ Private Sub HandleFolder(ByVal bRootInitialised As Boolean, ByVal sFolder As Str
     'Loop over folders and handle them
     Dim vFolder As Variant
     For Each vFolder In cFolders
-        Call HandleFolder(bRootInitialised, vFolder)
+        Call HandleFolder(bRootInitialised, vFolder, bRecurse)
     Next
 End Sub
 Private Sub HandleFile(ByVal bRootInitialised As Boolean, ByVal sFile As String)
@@ -203,6 +205,15 @@ Private Sub HandleFile(ByVal bRootInitialised As Boolean, ByVal sFile As String)
         End If
     End If
 End Sub
+
+Private Function CreateRoot(ByVal sFileSpec As String, ByVal bRecurse As Boolean) As Object
+    Dim ret As Object
+    Set ret = CreateObject("Scripting.Dictionary")
+    ret.CompareMode = 1
+    ret("Path") = sFileSpec
+    ret("Recurse") = bRecurse
+    Set CreateRoot = ret
+End Function
 
 Private Function CreateFileObject(ByVal sFile As String, ByVal DateModified As Date, ByVal bExists As Boolean) As Object
     Dim ret As Object

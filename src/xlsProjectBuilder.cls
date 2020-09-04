@@ -28,9 +28,17 @@ Public Sub StartWatching()
     If VBEIsTrusted() Then
         'Pre-requesites exist, start building and testing
         
+        'Get roots:
+        Dim vRoots As Variant: vRoots = xlsProjectBuilder.ListObjects("Roots").DataBodyRange.Value
+        
         'Start watching files
         Set FW = xlsFileWatcher
-        Call FW.fwStartWatching(ThisWorkbook.Path & GetSetting("Root"))
+        Call FW.fwStartWatching(ThisWorkbook.Path & "\" & vRoots(1, 2), vRoots(1, 3))
+        
+        Dim i As Long
+        For i = 2 To UBound(vRoots, 1)
+            Call FW.fwAddRoot(ThisWorkbook.Path & "\" & vRoots(i, 2), vRoots(i, 3))
+        Next
         
         'initialise workbook events
         Set wb = ThisWorkbook
@@ -59,19 +67,22 @@ Public Sub DestroyAll()
     Dim data As Variant
     data = getProjectData()
     
-    Dim iNameIndex As Long: iNameIndex = getProjectHeaderIndex("Name")
-    
-    Dim i As Long
-    For i = UBound(data, 1) To 1 Step -1
-        'Get VB Component name
-        Dim sItemName As String: sItemName = data(i, iNameIndex)
+    'Ensure not empty
+    If Not IsEmpty(data) Then
+        Dim iNameIndex As Long: iNameIndex = getProjectHeaderIndex("Name")
         
-        'Remove VB Component
-        Call RemoveVBComponent(sItemName)
-        
-        'Remove list object row
-        Me.ListObjects("VBProject").ListRows.Item(i).Delete
-    Next
+        Dim i As Long
+        For i = UBound(data, 1) To 1 Step -1
+            'Get VB Component name
+            Dim sItemName As String: sItemName = data(i, iNameIndex)
+            
+            'Remove VB Component
+            Call RemoveVBComponent(sItemName)
+            
+            'Remove list object row
+            Me.ListObjects("VBProject").ListRows.Item(i).Delete
+        Next
+    End If
 End Sub
 
 
@@ -189,7 +200,9 @@ Private Function getVBProjectNameFromPath(ByVal sFileName As String) As String
 End Function
 
 Private Function getProjectData() As Variant
-    getProjectData = Me.ListObjects("VBProject").DataBodyRange.Value
+    If Me.ListObjects("VBProject").ListRows.Count > 0 Then
+        getProjectData = Me.ListObjects("VBProject").DataBodyRange.Value
+    End If
 End Function
 Private Function getProjectHeaderIndex(ByVal sHeaderName As String) As Long
     On Error GoTo ErrorOccurred
