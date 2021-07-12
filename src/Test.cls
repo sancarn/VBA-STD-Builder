@@ -10,7 +10,7 @@ Attribute VB_Exposed = True
 Private WithEvents shTests As Worksheet
 Attribute shTests.VB_VarHelpID = -1
 Private loTests As ListObject
-Public Sub Init()
+Public Sub init()
     Set shTests = getSheet("Test")
     
     If Not loExists(shTests, "Tests") Then
@@ -45,9 +45,14 @@ Public Sub Init()
     
     Call Refresh
 End Sub
+Public Property Get Sheet() As Worksheet
+  Static pPlayground As Worksheet: If pPlayground Is Nothing Then Set pPlayground = getSheet("Playground")
+  Set Sheet = pPlayground
+End Property
+
 Public Sub Refresh()
     If loTests Is Nothing Then
-        Me.Init
+        Me.init
     Else
         If Not loTests.DataBodyRange Is Nothing Then
             loTests.DataBodyRange.EntireRow.Delete
@@ -63,7 +68,7 @@ Public Sub RefreshGlobalFormats()
     Next
 End Sub
 Public Sub Topic(ByVal sName As String)
-    If loTests Is Nothing Then Me.Init
+    If loTests Is Nothing Then Me.init
     
     Dim lr As ListRow
     Set lr = loTests.ListRows.Add()
@@ -71,7 +76,7 @@ Public Sub Topic(ByVal sName As String)
     If loTests.ListRows.Count = 1 Then Call RefreshGlobalFormats
 End Sub
 Public Sub Assert(ByVal sName As String, ByVal result As Boolean)
-    If loTests Is Nothing Then Me.Init
+    If loTests Is Nothing Then Me.init
     
     Dim lr As ListRow
     Set lr = loTests.ListRows.Add()
